@@ -1,0 +1,16 @@
+[package]
+name = "omango-sync"
+version = "0.1.0"
+authors = ["Trung Tran <tqtrungse@gmail.com>"]
+edition = "2021"
+description = "Synchronization collections"
+license = "MIT"
+repository = "https://github.com/tqtrungse/omango-sync"
+homepage = "https://github.com/tqtrungse/omango-sync"
+documentation = "https://docs.rs/omango-sync"
+keywords = ["concurrency", "wait-group"]
+categories = ["concurrency", "algorithms", "data-structures"]
+
+[dependencies]
+omango-util = "0.1.1"
+omango-futex = "0.1.1"
