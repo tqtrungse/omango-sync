@@ -46,7 +46,7 @@ impl WaitGroup {
             return;
         }
         self.flag.store(1, Ordering::Release);
-        omango_futex::wake_one(&self.flag);      
+        omango_futex::wake_all(&self.flag);      
     }
     
     pub fn wait(&self) {
@@ -65,24 +65,49 @@ impl WaitGroup {
 
 mod test {
     #[test]
-    fn test_success() {
+    fn test_wait_on_one() {
         let wg = std::sync::Arc::new(crate::wait_group::WaitGroup::new(1));
         let wg_clone = wg.clone();
         
         let count = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
-        let count_clone1 = count.clone();
+        let count_clone = count.clone();
 
         let thread = std::thread::spawn(move || {
             wg_clone.add(1);
-            count_clone1.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            count_clone.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             wg_clone.done();
         });
-        thread.join().unwrap();
         
         count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         wg.done();
         wg.wait();
+        thread.join().unwrap();
         
+        assert_eq!(count.load(std::sync::atomic::Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn test_wait_on_gt_one() {
+        let wg = std::sync::Arc::new(crate::wait_group::WaitGroup::new(1));
+        let wg_clone = wg.clone();
+
+        let count = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let count_clone = count.clone();
+
+        let thread = std::thread::spawn(move || {
+            wg_clone.add(1);
+            count_clone.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            wg_clone.done();
+            wg_clone.wait();
+
+            assert_eq!(count_clone.load(std::sync::atomic::Ordering::Relaxed), 2);
+        });
+
+        count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        wg.done();
+        wg.wait();
+        
+        thread.join().unwrap();
         assert_eq!(count.load(std::sync::atomic::Ordering::Relaxed), 2);
     }
     
