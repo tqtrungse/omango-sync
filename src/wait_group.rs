@@ -64,42 +64,32 @@ impl WaitGroup {
 }
 
 mod test {
-    use std::{
-        sync::{
-            Arc,
-            atomic::{AtomicU32, Ordering},
-        },
-        {panic, thread},
-    };
-    
-    use crate::wait_group::WaitGroup;
-
     #[test]
     fn test_success() {
-        let wg = Arc::new(WaitGroup::new(1));
+        let wg = std::sync::Arc::new(crate::wait_group::WaitGroup::new(1));
         let wg_clone = wg.clone();
         
-        let count = Arc::new(AtomicU32::new(0));
+        let count = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
         let count_clone1 = count.clone();
 
-        let thread = thread::spawn(move || {
+        let thread = std::thread::spawn(move || {
             wg_clone.add(1);
-            count_clone1.fetch_add(1, Ordering::Relaxed);
+            count_clone1.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             wg_clone.done();
         });
         thread.join().unwrap();
         
-        count.fetch_add(1, Ordering::Relaxed);
+        count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         wg.done();
         wg.wait();
         
-        assert_eq!(count.load(Ordering::Relaxed), 2);
+        assert_eq!(count.load(std::sync::atomic::Ordering::Relaxed), 2);
     }
     
     #[test]
     fn test_done_without_size() {
-        let result = panic::catch_unwind(|| {
-            let wg = WaitGroup::default();
+        let result = std::panic::catch_unwind(|| {
+            let wg = crate::wait_group::WaitGroup::default();
             wg.done();
         });
         assert!(result.is_err());
