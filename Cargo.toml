@@ -2,7 +2,7 @@
 name = "omango-sync"
 version = "0.1.0"
 authors = ["Trung Tran <tqtrungse@gmail.com>"]
-edition = "2021"
+edition = "2018"
 description = "Synchronization collections"
 license = "MIT"
 repository = "https://github.com/tqtrungse/omango-sync"
