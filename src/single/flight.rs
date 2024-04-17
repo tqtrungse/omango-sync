@@ -93,15 +93,16 @@ impl Group {
     /// sure that only one execution is in-flight for a given key at a
     /// time. If a duplicate comes in, the duplicate caller waits for the
     /// original to complete and receives the same results.
-    /// The return value shared indicates whether v was given to multiple callers.
-    pub fn exec<T: Any>(&self, key: String, func: Fn<T>) -> (Arc<Result<T, Error>>, bool) {
+    /// The return value includes `u32` indicates number of callers 
+    /// (aka number times of shared value).
+    pub fn exec<T: Any>(&self, key: String, func: Fn<T>) -> (Arc<Result<T, Error>>, u32) {
         match self.get(key.as_str()) {
             Some(any) => {
                 let call = any.downcast_ref::<Call<T>>().unwrap();
                 call.count.fetch_add(1, Ordering::Relaxed);
                 call.wg.wait();
 
-                (get_result!(call), true)
+                (get_result!(call), call.count.load(Ordering::Relaxed))
             }
             None => {
                 let oc = Rc::<Call<T>>::default();
@@ -115,11 +116,11 @@ impl Group {
                 let out = match result {
                     Ok(result) => {
                         set_result!(call, result);
-                        (get_result!(call), call.count.load(Ordering::Relaxed) > 0)
+                        (get_result!(call), call.count.load(Ordering::Relaxed))
                     }
                     Err(_) => {
                         set_result!(call, Err(Error("function of user panic".to_string())));
-                        (get_result!(call), false)
+                        (get_result!(call), call.count.load(Ordering::Relaxed))
                     }
                 };
                 call.wg.done();
@@ -137,19 +138,6 @@ impl Group {
     #[inline(always)]
     pub fn forgot(&self, key: &str) -> bool {
         self.guard.lock().remove(key).is_some()
-    }
-
-    /// [size] returns number of waiting threads by the key. If key does not 
-    /// exist, result will be zero.
-    #[inline(always)]
-    pub fn size<T: Any>(&self, key: &str) -> u32 {
-        match self.guard.lock().get(key) {
-            Some(any) => {
-                let call = any.downcast_ref::<Call<T>>().unwrap();
-                call.count.load(Ordering::Relaxed)
-            },
-            None => 0,
-        }
     }
 
     #[allow(clippy::map_clone)]
@@ -179,7 +167,7 @@ mod test {
             }
         });
 
-        let (rs, is_dup) = g2.exec("google".to_string(), move || {
+        let (rs, times) = g2.exec("google".to_string(), move || {
             std::thread::sleep(std::time::Duration::from_secs(1));
             Ok(1i32)
         });
@@ -189,7 +177,7 @@ mod test {
             Ok(v) => assert_eq!(v, &1i32),
             Err(_) => panic!("should be success"),
         }
-        assert!(is_dup);
+        assert_eq!(times, 2);
 
         g2.forgot("google");
     }
