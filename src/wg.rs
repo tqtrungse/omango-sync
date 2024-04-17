@@ -66,7 +66,7 @@ impl WaitGroup {
 mod test {
     #[test]
     fn test_wait_on_one() {
-        let wg = std::sync::Arc::new(crate::wait_group::WaitGroup::new(1));
+        let wg = std::sync::Arc::new(crate::wg::WaitGroup::new(1));
         let wg_clone = wg.clone();
         
         let count = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
@@ -88,7 +88,7 @@ mod test {
 
     #[test]
     fn test_wait_on_gt_one() {
-        let wg = std::sync::Arc::new(crate::wait_group::WaitGroup::new(1));
+        let wg = std::sync::Arc::new(crate::wg::WaitGroup::new(1));
         let wg_clone = wg.clone();
 
         let count = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
@@ -114,7 +114,7 @@ mod test {
     #[test]
     fn test_done_without_size() {
         let result = std::panic::catch_unwind(|| {
-            let wg = crate::wait_group::WaitGroup::default();
+            let wg = crate::wg::WaitGroup::default();
             wg.done();
         });
         assert!(result.is_err());
