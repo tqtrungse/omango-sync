@@ -1,1 +1,3 @@
-pub mod wait_group;
+pub mod wg;
+pub mod error;
+pub mod single;
