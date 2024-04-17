@@ -12,5 +12,5 @@ keywords = ["concurrency", "wait-group"]
 categories = ["concurrency", "algorithms", "data-structures"]
 
 [dependencies]
-omango-util = "0.1.3"
-omango-futex = "0.1.1"
+omango-util = "0.1.5"
+omango-futex = "0.1.2"
