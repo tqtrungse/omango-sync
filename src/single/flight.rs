@@ -67,7 +67,7 @@ impl<T: Any> Default for Call<T> {
     fn default() -> Self {
         Self {
             wg: WaitGroup::default(),
-            count: AtomicU32::new(0),
+            count: AtomicU32::new(1),
             result: UnsafeCell::new(MaybeUninit::uninit()),
         }
     }
