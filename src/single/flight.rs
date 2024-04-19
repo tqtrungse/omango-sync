@@ -40,7 +40,7 @@ use crate::{
     wg::WaitGroup,
 };
 
-type Fn<T> = fn() -> Result<T, Error>;
+pub type Fn<T> = fn() -> Result<T, Error>;
 
 macro_rules! get_result {
     ($call:expr) => {
@@ -89,14 +89,49 @@ impl Default for Group {
 }
 
 impl Group {
-    /// [exec] executes and returns the results of the given function, making
+    /// [`exec`] executes and returns the results of the given function, making
     /// sure that only one execution is in-flight for a given key at a
-    /// time. If a duplicate comes in, the duplicate caller waits for the
-    /// original to complete and receives the same results.
+    /// time. 
+    /// If a duplicate comes in, the duplicate caller waits for the original
+    /// to complete and receives the same results.
     /// The return value includes `u32` indicates number of callers 
     /// (aka number times of shared value).
-    pub fn exec<T: Any>(&self, key: String, func: Fn<T>) -> (Arc<Result<T, Error>>, u32) {
-        match self.get(key.as_str()) {
+    ///
+    /// Example:
+    /// 
+    /// ```
+    /// use omango_sync::single::flight::Group;
+    /// 
+    /// let g = std::sync::Arc::new(Group::default());
+    /// let g_clone = g.clone();
+    /// 
+    /// let thread = std::thread::spawn(move || {
+    ///     let (rs, _) = g.exec("google", move || {
+    ///         std::thread::sleep(std::time::Duration::from_secs(1));
+    ///         Ok(1i32)
+    ///     });
+    ///     match rs.as_ref() {
+    ///         Ok(v) => assert_eq!(v, &1i32),
+    ///         Err(_) => panic!("should be success"),
+    ///    }
+    /// });
+    /// 
+    /// let (rs, times) = g_clone.exec("google", move || {
+    ///     std::thread::sleep(std::time::Duration::from_secs(1));
+    ///     Ok(1i32)
+    /// });
+    /// thread.join().unwrap();
+    /// 
+    /// match rs.as_ref() {
+    ///     Ok(v) => assert_eq!(v, &1i32),
+    ///     Err(_) => panic!("should be success"),
+    /// }
+    /// assert_eq!(times, 2);
+    /// 
+    /// g_clone.forgot("google");
+    /// ```
+    pub fn exec<T: Any>(&self, key: &str, func: Fn<T>) -> (Arc<Result<T, Error>>, u32) {
+        match self.get(key) {
             Some(any) => {
                 let call = any.downcast_ref::<Call<T>>().unwrap();
                 call.count.fetch_add(1, Ordering::Relaxed);
@@ -108,7 +143,7 @@ impl Group {
                 let oc = Rc::<Call<T>>::default();
                 let call = oc.clone();
                 oc.wg.add(1);
-                self.guard.lock().insert(key, oc);
+                self.guard.lock().insert(key.to_string(), oc);
 
                 let result = panic::catch_unwind(|| {
                     func()
@@ -129,12 +164,14 @@ impl Group {
         }
     }
 
-    /// [forgot] tells the single-flight to forget about a key.  Future calls
-    /// to [exec] for this key will call the function rather than waiting for
+    /// [`forgot`] tells the single-flight to forget about a key.  Future calls
+    /// to [`exec`] for this key will call the function rather than waiting for
     /// an earlier call to complete.
     /// 
-    /// NOTE: If [forgot] can not call, the future calls will get result of the
+    /// NOTE: If it can not call, the future calls will get result of the
     /// last calling.
+    /// 
+    /// [`exec`]: Group::exec
     #[inline(always)]
     pub fn forgot(&self, key: &str) -> bool {
         self.guard.lock().remove(key).is_some()
@@ -153,11 +190,11 @@ unsafe impl Sync for Group {}
 mod test {
     #[test]
     fn test() {
-        let g1 = std::sync::Arc::new(crate::single::flight::Group::default());
-        let g2 = g1.clone();
+        let g = std::sync::Arc::new(crate::single::flight::Group::default());
+        let g_clone = g.clone();
 
         let thread = std::thread::spawn(move || {
-            let (rs, _) = g1.exec("google".to_string(), move || {
+            let (rs, _) = g.exec("google", move || {
                 std::thread::sleep(std::time::Duration::from_secs(1));
                 Ok(1i32)
             });
@@ -167,7 +204,7 @@ mod test {
             }
         });
 
-        let (rs, times) = g2.exec("google".to_string(), move || {
+        let (rs, times) = g_clone.exec("google", move || {
             std::thread::sleep(std::time::Duration::from_secs(1));
             Ok(1i32)
         });
@@ -179,6 +216,6 @@ mod test {
         }
         assert_eq!(times, 2);
 
-        g2.forgot("google");
+        g_clone.forgot("google");
     }
 }

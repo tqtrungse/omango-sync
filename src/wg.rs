@@ -24,10 +24,24 @@ use std::{
 };
 
 use omango_util::{
-    hint::{likely},
+    hint::likely,
     lock::Spinlock,
 };
 
+/// A [`WaitGroup`] waits for a collection of goroutines to finish.
+/// The main thread calls [`add`] to set the number of thread to wait for.
+/// Then each of the thread runs and calls [`done`] when finished. 
+/// At the same time, [`wait`] can be used to block until all goroutines 
+/// have finished.
+///
+/// A [`WaitGroup`] must not be copied after first use.
+///
+/// A call to [`done`] “synchronizes before” the return of any 
+/// Wait call that it unblocks.
+/// 
+/// [`add`]: WaitGroup::add
+/// [`done`]: WaitGroup::done
+/// [`wait`]: WaitGroup::wait
 pub struct WaitGroup {
     guard: Spinlock<i32>,
     flag: AtomicU32,
@@ -41,6 +55,9 @@ impl Default for WaitGroup {
 }
 
 impl WaitGroup {
+    /// [`new`] creates a new [`WaitGroup`] with number member of group.
+    /// 
+    /// [`WaitGroup`]: WaitGroup
     #[inline(always)]
     pub fn new(n: u32) -> Self {
         Self {
@@ -48,13 +65,62 @@ impl WaitGroup {
             flag: AtomicU32::new(0),
         }
     }
-    
+
+    /// [`add`] adds delta, which may be negative, to the [`WaitGroup`] counter.
+    /// If the counter becomes zero, all goroutines blocked on [`wait`] are released.
+    /// If the counter goes negative, Add panics.
+    ///
+    /// Note that calls with a positive delta that occur when the counter is zero
+    /// must happen before a Wait. Calls with a negative delta, or calls with a
+    /// positive delta that start when the counter is greater than zero, may happen
+    /// at any time.
+    /// Typically, this means the calls to Add should execute before the statement
+    /// creating the goroutine or other event to be waited for.
+    /// If a WaitGroup is reused to wait for several independent sets of events,
+    /// new Add calls must happen after all previous Wait calls have returned.
+    /// 
+    /// Example:
+    /// 
+    /// ```
+    /// use omango_sync::wg::WaitGroup;
+    /// 
+    /// let wg = std::sync::Arc::new(WaitGroup::new(1));
+    /// let wg_clone = wg.clone();
+    /// 
+    /// let count = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+    /// let count_clone = count.clone();
+    /// 
+    /// let thread = std::thread::spawn(move || {
+    ///     wg_clone.add(1);
+    ///     count_clone.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    ///     wg_clone.done();
+    ///     wg_clone.wait();
+    /// 
+    ///     assert_eq!(count_clone.load(std::sync::atomic::Ordering::Relaxed), 2);
+    /// });
+    /// 
+    /// count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    /// wg.done();
+    /// wg.wait();
+    ///         
+    /// thread.join().unwrap();
+    /// assert_eq!(count.load(std::sync::atomic::Ordering::Relaxed), 2);
+    /// ```
+    ///
+    /// [`WaitGroup`]: WaitGroup
+    /// [`wait`]: WaitGroup::wait
     #[inline(always)]
     pub fn add(&self, n: u32) {
         let mut count = self.guard.lock();
         count.add_assign(n as i32);
     }
-    
+
+    /// [`done`] decrements the [`WaitGroup`] counter by one.
+    /// 
+    /// Example see [`add`]
+    /// 
+    /// [`WaitGroup`]: WaitGroup
+    /// [`add`]: WaitGroup::add
     #[inline(always)]
     pub fn done(&self) {
         let mut count = self.guard.lock();
@@ -68,7 +134,13 @@ impl WaitGroup {
         self.flag.store(1, Ordering::Release);
         omango_futex::wake_all(&self.flag);      
     }
-    
+
+    /// [`wait`] blocks until the [`WaitGroup`] counter is zero.
+    ///
+    /// Example see [`add`]
+    ///
+    /// [`WaitGroup`]: WaitGroup
+    /// [`add`]: WaitGroup::add
     pub fn wait(&self) {
         while self.should_wait() {
             omango_futex::wait(&self.flag, 0);
